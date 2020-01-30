@@ -9656,6 +9656,7 @@ LINUX KERNEL DUMP TEST MODULE (LKDTM)
 M:	Kees Cook <keescook@chromium.org>
 S:	Maintained
 F:	drivers/misc/lkdtm/*
+F:	tools/testing/selftests/lkdtm/*
 
 LINUX KERNEL MEMORY CONSISTENCY MODEL (LKMM)
 M:	Alan Stern <stern@rowland.harvard.edu>
@@ -17510,7 +17511,7 @@ F:	drivers/mtd/nand/raw/vf610_nfc.c
 VFAT/FAT/MSDOS FILESYSTEM
 M:	OGAWA Hirofumi <hirofumi@mail.parknet.co.jp>
 S:	Maintained
-F:	Documentation/filesystems/vfat.txt
+F:	Documentation/filesystems/vfat.rst
 F:	fs/fat/
 
 VFIO DRIVER
