@@ -240,13 +240,12 @@ int amdgpu_vce_sw_fini(struct amdgpu_device *adev)
 int amdgpu_vce_entity_init(struct amdgpu_device *adev)
 {
 	struct amdgpu_ring *ring;
-	struct drm_gpu_scheduler *sched;
+	struct drm_sched_rq *rq;
 	int r;
 
 	ring = &adev->vce.ring[0];
-	sched = &ring->sched;
-	r = drm_sched_entity_init(&adev->vce.entity, DRM_SCHED_PRIORITY_NORMAL,
-				  &sched, 1, NULL);
+	rq = &ring->sched.sched_rq[DRM_SCHED_PRIORITY_NORMAL];
+	r = drm_sched_entity_init(&adev->vce.entity, &rq, 1, NULL);
 	if (r != 0) {
 		DRM_ERROR("Failed setting up VCE run queue.\n");
 		return r;

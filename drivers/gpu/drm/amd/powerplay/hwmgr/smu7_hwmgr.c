@@ -4238,6 +4238,7 @@ static int smu7_check_mc_firmware(struct pp_hwmgr *hwmgr)
 {
 	struct smu7_hwmgr *data = (struct smu7_hwmgr *)(hwmgr->backend);
 
+	uint32_t vbios_version;
 	uint32_t tmp;
 
 	/* Read MC indirect register offset 0x9F bits [3:0] to see
@@ -4246,6 +4247,7 @@ static int smu7_check_mc_firmware(struct pp_hwmgr *hwmgr)
 	 */
 
 	smu7_get_mc_microcode_version(hwmgr);
+	vbios_version = hwmgr->microcode_version_info.MC & 0xf;
 
 	data->need_long_memory_training = false;
 
@@ -4943,7 +4945,7 @@ static int smu7_get_power_profile_mode(struct pp_hwmgr *hwmgr, char *buf)
 			title[0], title[1], title[2], title[3],
 			title[4], title[5], title[6], title[7]);
 
-	len = ARRAY_SIZE(smu7_profiling);
+	len = sizeof(smu7_profiling) / sizeof(struct profile_mode_setting);
 
 	for (i = 0; i < len; i++) {
 		if (i == hwmgr->power_profile_mode) {
@@ -5075,11 +5077,13 @@ static int smu7_get_performance_level(struct pp_hwmgr *hwmgr, const struct pp_hw
 				PHM_PerformanceLevel *level)
 {
 	const struct smu7_power_state *ps;
+	struct smu7_hwmgr *data;
 	uint32_t i;
 
 	if (level == NULL || hwmgr == NULL || state == NULL)
 		return -EINVAL;
 
+	data = hwmgr->backend;
 	ps = cast_const_phw_smu7_power_state(state);
 
 	i = index > ps->performance_level_count - 1 ?
@@ -5185,11 +5189,13 @@ uint8_t smu7_get_sleep_divider_id_from_clock(uint32_t clock,
 
 int smu7_init_function_pointers(struct pp_hwmgr *hwmgr)
 {
+	int ret = 0;
+
 	hwmgr->hwmgr_func = &smu7_hwmgr_funcs;
 	if (hwmgr->pp_table_version == PP_TABLE_V0)
 		hwmgr->pptable_func = &pptable_funcs;
 	else if (hwmgr->pp_table_version == PP_TABLE_V1)
 		hwmgr->pptable_func = &pptable_v1_0_funcs;
 
-	return 0;
+	return ret;
 }

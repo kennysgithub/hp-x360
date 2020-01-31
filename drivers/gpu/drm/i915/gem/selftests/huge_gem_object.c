@@ -12,14 +12,10 @@ static void huge_free_pages(struct drm_i915_gem_object *obj,
 			    struct sg_table *pages)
 {
 	unsigned long nreal = obj->scratch / PAGE_SIZE;
-	struct sgt_iter sgt_iter;
-	struct page *page;
+	struct scatterlist *sg;
 
-	for_each_sgt_page(page, sgt_iter, pages) {
-		__free_page(page);
-		if (!--nreal)
-			break;
-	}
+	for (sg = pages->sgl; sg && nreal--; sg = __sg_next(sg))
+		__free_page(sg_page(sg));
 
 	sg_free_table(pages);
 	kfree(pages);
@@ -74,6 +70,7 @@ static int huge_get_pages(struct drm_i915_gem_object *obj)
 
 err:
 	huge_free_pages(obj, pages);
+
 	return -ENOMEM;
 #undef GFP
 }

@@ -6,13 +6,6 @@
 
 #include "i915_sw_fence_work.h"
 
-static void fence_complete(struct dma_fence_work *f)
-{
-	if (f->ops->release)
-		f->ops->release(f);
-	dma_fence_signal(&f->dma);
-}
-
 static void fence_work(struct work_struct *work)
 {
 	struct dma_fence_work *f = container_of(work, typeof(*f), work);
@@ -21,8 +14,7 @@ static void fence_work(struct work_struct *work)
 	err = f->ops->work(f);
 	if (err)
 		dma_fence_set_error(&f->dma, err);
-
-	fence_complete(f);
+	dma_fence_signal(&f->dma);
 	dma_fence_put(&f->dma);
 }
 
@@ -40,7 +32,7 @@ fence_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 			dma_fence_get(&f->dma);
 			queue_work(system_unbound_wq, &f->work);
 		} else {
-			fence_complete(f);
+			dma_fence_signal(&f->dma);
 		}
 		break;
 
@@ -67,6 +59,9 @@ static const char *get_timeline_name(struct dma_fence *fence)
 static void fence_release(struct dma_fence *fence)
 {
 	struct dma_fence_work *f = container_of(fence, typeof(*f), dma);
+
+	if (f->ops->release)
+		f->ops->release(f);
 
 	i915_sw_fence_fini(&f->chain);
 

@@ -16,7 +16,6 @@
 #include "display/intel_frontbuffer.h"
 #include "i915_gem_object_types.h"
 #include "i915_gem_gtt.h"
-#include "i915_vma_types.h"
 
 void i915_gem_init__objects(struct drm_i915_private *i915);
 
@@ -133,13 +132,13 @@ void i915_gem_object_unlock_fence(struct drm_i915_gem_object *obj,
 static inline void
 i915_gem_object_set_readonly(struct drm_i915_gem_object *obj)
 {
-	obj->flags |= I915_BO_READONLY;
+	obj->base.vma_node.readonly = true;
 }
 
 static inline bool
 i915_gem_object_is_readonly(const struct drm_i915_gem_object *obj)
 {
-	return obj->flags & I915_BO_READONLY;
+	return obj->base.vma_node.readonly;
 }
 
 static inline bool
@@ -272,27 +271,10 @@ void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
 int ____i915_gem_object_get_pages(struct drm_i915_gem_object *obj);
 int __i915_gem_object_get_pages(struct drm_i915_gem_object *obj);
 
-enum i915_mm_subclass { /* lockdep subclass for obj->mm.lock/struct_mutex */
-	I915_MM_NORMAL = 0,
-	/*
-	 * Only used by struct_mutex, when called "recursively" from
-	 * direct-reclaim-esque. Safe because there is only every one
-	 * struct_mutex in the entire system.
-	 */
-	I915_MM_SHRINKER = 1,
-	/*
-	 * Used for obj->mm.lock when allocating pages. Safe because the object
-	 * isn't yet on any LRU, and therefore the shrinker can't deadlock on
-	 * it. As soon as the object has pages, obj->mm.lock nests within
-	 * fs_reclaim.
-	 */
-	I915_MM_GET_PAGES = 1,
-};
-
 static inline int __must_check
 i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
 {
-	might_lock_nested(&obj->mm.lock, I915_MM_GET_PAGES);
+	might_lock(&obj->mm.lock);
 
 	if (atomic_inc_not_zero(&obj->mm.pages_pin_count))
 		return 0;
@@ -335,7 +317,13 @@ i915_gem_object_unpin_pages(struct drm_i915_gem_object *obj)
 	__i915_gem_object_unpin_pages(obj);
 }
 
-int __i915_gem_object_put_pages(struct drm_i915_gem_object *obj);
+enum i915_mm_subclass { /* lockdep subclass for obj->mm.lock/struct_mutex */
+	I915_MM_NORMAL = 0,
+	I915_MM_SHRINKER /* called "recursively" from direct-reclaim-esque */
+};
+
+int __i915_gem_object_put_pages(struct drm_i915_gem_object *obj,
+				enum i915_mm_subclass subclass);
 void i915_gem_object_truncate(struct drm_i915_gem_object *obj);
 void i915_gem_object_writeback(struct drm_i915_gem_object *obj);
 
@@ -387,6 +375,9 @@ static inline void i915_gem_object_unpin_map(struct drm_i915_gem_object *obj)
 {
 	i915_gem_object_unpin_pages(obj);
 }
+
+void __i915_gem_object_release_mmap(struct drm_i915_gem_object *obj);
+void i915_gem_object_release_mmap(struct drm_i915_gem_object *obj);
 
 void
 i915_gem_object_flush_write_domain(struct drm_i915_gem_object *obj,

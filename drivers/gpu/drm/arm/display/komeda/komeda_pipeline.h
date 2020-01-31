@@ -11,7 +11,6 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include "malidp_utils.h"
-#include "komeda_color_mgmt.h"
 
 #define KOMEDA_MAX_PIPELINES		2
 #define KOMEDA_PIPELINE_MAX_LAYERS	4
@@ -328,8 +327,6 @@ struct komeda_improc_state {
 	struct komeda_component_state base;
 	u8 color_format, color_depth;
 	u16 hsize, vsize;
-	u32 fgamma_coeffs[KOMEDA_N_GAMMA_COEFFS];
-	u32 ctm_coeffs[KOMEDA_N_CTM_COEFFS];
 };
 
 /* display timing controller */

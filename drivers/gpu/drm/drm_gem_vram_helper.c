@@ -2,7 +2,6 @@
 
 #include <drm/drm_debugfs.h>
 #include <drm/drm_device.h>
-#include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_ttm_helper.h>
@@ -93,17 +92,13 @@ static void drm_gem_vram_placement(struct drm_gem_vram_object *gbo,
 }
 
 static int drm_gem_vram_init(struct drm_device *dev,
+			     struct ttm_bo_device *bdev,
 			     struct drm_gem_vram_object *gbo,
-			     size_t size, unsigned long pg_align)
+			     size_t size, unsigned long pg_align,
+			     bool interruptible)
 {
-	struct drm_vram_mm *vmm = dev->vram_mm;
-	struct ttm_bo_device *bdev;
 	int ret;
 	size_t acc_size;
-
-	if (WARN_ONCE(!vmm, "VRAM MM not initialized"))
-		return -EINVAL;
-	bdev = &vmm->bdev;
 
 	gbo->bo.base.funcs = &drm_gem_vram_object_funcs;
 
@@ -117,7 +112,7 @@ static int drm_gem_vram_init(struct drm_device *dev,
 	drm_gem_vram_placement(gbo, TTM_PL_FLAG_VRAM | TTM_PL_FLAG_SYSTEM);
 
 	ret = ttm_bo_init(bdev, &gbo->bo, size, ttm_bo_type_device,
-			  &gbo->placement, pg_align, false, acc_size,
+			  &gbo->placement, pg_align, interruptible, acc_size,
 			  NULL, NULL, ttm_buffer_object_destroy);
 	if (ret)
 		goto err_drm_gem_object_release;
@@ -132,33 +127,29 @@ err_drm_gem_object_release:
 /**
  * drm_gem_vram_create() - Creates a VRAM-backed GEM object
  * @dev:		the DRM device
+ * @bdev:		the TTM BO device backing the object
  * @size:		the buffer size in bytes
  * @pg_align:		the buffer's alignment in multiples of the page size
+ * @interruptible:	sleep interruptible if waiting for memory
  *
  * Returns:
  * A new instance of &struct drm_gem_vram_object on success, or
  * an ERR_PTR()-encoded error code otherwise.
  */
 struct drm_gem_vram_object *drm_gem_vram_create(struct drm_device *dev,
+						struct ttm_bo_device *bdev,
 						size_t size,
-						unsigned long pg_align)
+						unsigned long pg_align,
+						bool interruptible)
 {
 	struct drm_gem_vram_object *gbo;
 	int ret;
 
-	if (dev->driver->gem_create_object) {
-		struct drm_gem_object *gem =
-			dev->driver->gem_create_object(dev, size);
-		if (!gem)
-			return ERR_PTR(-ENOMEM);
-		gbo = drm_gem_vram_of_gem(gem);
-	} else {
-		gbo = kzalloc(sizeof(*gbo), GFP_KERNEL);
-		if (!gbo)
-			return ERR_PTR(-ENOMEM);
-	}
+	gbo = kzalloc(sizeof(*gbo), GFP_KERNEL);
+	if (!gbo)
+		return ERR_PTR(-ENOMEM);
 
-	ret = drm_gem_vram_init(dev, gbo, size, pg_align);
+	ret = drm_gem_vram_init(dev, bdev, gbo, size, pg_align, interruptible);
 	if (ret < 0)
 		goto err_kfree;
 
@@ -492,8 +483,9 @@ EXPORT_SYMBOL(drm_gem_vram_vunmap);
 	Helper for implementing &struct drm_driver.dumb_create
  * @file:		the DRM file
  * @dev:		the DRM device
+ * @bdev:		the TTM BO device managing the buffer object
  * @pg_align:		the buffer's alignment in multiples of the page size
- * @pitch_align:	the scanline's alignment in powers of 2
+ * @interruptible:	sleep interruptible if waiting for memory
  * @args:		the arguments as provided to \
 				&struct drm_driver.dumb_create
  *
@@ -508,8 +500,9 @@ EXPORT_SYMBOL(drm_gem_vram_vunmap);
  */
 int drm_gem_vram_fill_create_dumb(struct drm_file *file,
 				  struct drm_device *dev,
+				  struct ttm_bo_device *bdev,
 				  unsigned long pg_align,
-				  unsigned long pitch_align,
+				  bool interruptible,
 				  struct drm_mode_create_dumb *args)
 {
 	size_t pitch, size;
@@ -517,19 +510,14 @@ int drm_gem_vram_fill_create_dumb(struct drm_file *file,
 	int ret;
 	u32 handle;
 
-	pitch = args->width * DIV_ROUND_UP(args->bpp, 8);
-	if (pitch_align) {
-		if (WARN_ON_ONCE(!is_power_of_2(pitch_align)))
-			return -EINVAL;
-		pitch = ALIGN(pitch, pitch_align);
-	}
+	pitch = args->width * ((args->bpp + 7) / 8);
 	size = pitch * args->height;
 
 	size = roundup(size, PAGE_SIZE);
 	if (!size)
 		return -EINVAL;
 
-	gbo = drm_gem_vram_create(dev, size, pg_align);
+	gbo = drm_gem_vram_create(dev, bdev, size, pg_align, interruptible);
 	if (IS_ERR(gbo))
 		return PTR_ERR(gbo);
 
@@ -624,7 +612,8 @@ int drm_gem_vram_driver_dumb_create(struct drm_file *file,
 	if (WARN_ONCE(!dev->vram_mm, "VRAM MM not initialized"))
 		return -EINVAL;
 
-	return drm_gem_vram_fill_create_dumb(file, dev, 0, 0, args);
+	return drm_gem_vram_fill_create_dumb(file, dev, &dev->vram_mm->bdev, 0,
+					     false, args);
 }
 EXPORT_SYMBOL(drm_gem_vram_driver_dumb_create);
 

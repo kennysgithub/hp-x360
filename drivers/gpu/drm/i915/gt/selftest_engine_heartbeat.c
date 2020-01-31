@@ -11,28 +11,6 @@
 #include "intel_gt_requests.h"
 #include "i915_selftest.h"
 
-static int timeline_sync(struct intel_timeline *tl)
-{
-	struct dma_fence *fence;
-	long timeout;
-
-	fence = i915_active_fence_get(&tl->last_request);
-	if (!fence)
-		return 0;
-
-	timeout = dma_fence_wait_timeout(fence, true, HZ / 2);
-	dma_fence_put(fence);
-	if (timeout < 0)
-		return timeout;
-
-	return 0;
-}
-
-static int engine_sync_barrier(struct intel_engine_cs *engine)
-{
-	return timeline_sync(engine->kernel_context->timeline);
-}
-
 struct pulse {
 	struct i915_active active;
 	struct kref kref;
@@ -75,7 +53,9 @@ static struct pulse *pulse_create(void)
 
 static void pulse_unlock_wait(struct pulse *p)
 {
-	i915_active_unlock_wait(&p->active);
+	mutex_lock(&p->active.mutex);
+	mutex_unlock(&p->active.mutex);
+	flush_work(&p->active.work);
 }
 
 static int __live_idle_pulse(struct intel_engine_cs *engine,
@@ -112,12 +92,7 @@ static int __live_idle_pulse(struct intel_engine_cs *engine,
 
 	GEM_BUG_ON(!llist_empty(&engine->barrier_tasks));
 
-	if (engine_sync_barrier(engine)) {
-		struct drm_printer m = drm_err_printer("pulse");
-
-		pr_err("%s: no heartbeat pulse?\n", engine->name);
-		intel_engine_dump(engine, &m, "%s", engine->name);
-
+	if (intel_gt_retire_requests_timeout(engine->gt, HZ / 5)) {
 		err = -ETIME;
 		goto out;
 	}
@@ -200,7 +175,8 @@ static int __live_heartbeat_fast(struct intel_engine_cs *engine)
 	int err;
 	int i;
 
-	ce = intel_context_create(engine);
+	ce = intel_context_create(engine->kernel_context->gem_context,
+				  engine);
 	if (IS_ERR(ce))
 		return PTR_ERR(ce);
 

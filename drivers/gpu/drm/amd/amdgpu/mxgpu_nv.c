@@ -252,7 +252,7 @@ static void xgpu_nv_mailbox_flr_work(struct work_struct *work)
 	 */
 	locked = mutex_trylock(&adev->lock_reset);
 	if (locked)
-		adev->in_gpu_reset = true;
+		adev->in_gpu_reset = 1;
 
 	do {
 		if (xgpu_nv_mailbox_peek_msg(adev) == IDH_FLR_NOTIFICATION_CMPL)
@@ -264,16 +264,12 @@ static void xgpu_nv_mailbox_flr_work(struct work_struct *work)
 
 flr_done:
 	if (locked) {
-		adev->in_gpu_reset = false;
+		adev->in_gpu_reset = 0;
 		mutex_unlock(&adev->lock_reset);
 	}
 
 	/* Trigger recovery for world switch failure if no TDR */
-	if (amdgpu_device_should_recover_gpu(adev)
-		&& (adev->sdma_timeout == MAX_SCHEDULE_TIMEOUT ||
-		adev->gfx_timeout == MAX_SCHEDULE_TIMEOUT ||
-		adev->compute_timeout == MAX_SCHEDULE_TIMEOUT ||
-		adev->video_timeout == MAX_SCHEDULE_TIMEOUT))
+	if (amdgpu_device_should_recover_gpu(adev))
 		amdgpu_device_gpu_recover(adev, NULL);
 }
 

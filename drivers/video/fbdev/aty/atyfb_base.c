@@ -1326,10 +1326,10 @@ static int atyfb_set_par(struct fb_info *info)
 	par->accel_flags = var->accel_flags; /* hack */
 
 	if (var->accel_flags) {
-		atyfb_ops.fb_sync = atyfb_sync;
+		info->fbops->fb_sync = atyfb_sync;
 		info->flags &= ~FBINFO_HWACCEL_DISABLED;
 	} else {
-		atyfb_ops.fb_sync = NULL;
+		info->fbops->fb_sync = NULL;
 		info->flags |= FBINFO_HWACCEL_DISABLED;
 	}
 
@@ -2712,7 +2712,7 @@ static int aty_init(struct fb_info *info)
 
 #ifdef CONFIG_FB_ATY_CT
 	if (!noaccel && M64_HAS(INTEGRATED))
-		aty_init_cursor(info, &atyfb_ops);
+		aty_init_cursor(info);
 #endif /* CONFIG_FB_ATY_CT */
 	info->var = var;
 

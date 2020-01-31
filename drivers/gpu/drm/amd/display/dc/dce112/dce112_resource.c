@@ -744,7 +744,7 @@ void dce112_clock_source_destroy(struct clock_source **clk_src)
 	*clk_src = NULL;
 }
 
-static void dce112_resource_destruct(struct dce110_resource_pool *pool)
+static void destruct(struct dce110_resource_pool *pool)
 {
 	unsigned int i;
 
@@ -1013,7 +1013,7 @@ static void dce112_destroy_resource_pool(struct resource_pool **pool)
 {
 	struct dce110_resource_pool *dce110_pool = TO_DCE110_RES_POOL(*pool);
 
-	dce112_resource_destruct(dce110_pool);
+	destruct(dce110_pool);
 	kfree(dce110_pool);
 	*pool = NULL;
 }
@@ -1186,7 +1186,7 @@ const struct resource_caps *dce112_resource_cap(
 		return &polaris_10_resource_cap;
 }
 
-static bool dce112_resource_construct(
+static bool construct(
 	uint8_t num_virtual_links,
 	struct dc *dc,
 	struct dce110_resource_pool *pool)
@@ -1372,7 +1372,7 @@ static bool dce112_resource_construct(
 	return true;
 
 res_create_fail:
-	dce112_resource_destruct(pool);
+	destruct(pool);
 	return false;
 }
 
@@ -1386,7 +1386,7 @@ struct resource_pool *dce112_create_resource_pool(
 	if (!pool)
 		return NULL;
 
-	if (dce112_resource_construct(num_virtual_links, dc, pool))
+	if (construct(num_virtual_links, dc, pool))
 		return &pool->base;
 
 	kfree(pool);

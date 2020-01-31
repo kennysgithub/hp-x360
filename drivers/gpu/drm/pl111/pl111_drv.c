@@ -166,7 +166,7 @@ static int pl111_modeset_init(struct drm_device *dev)
 	priv->bridge = bridge;
 	if (panel) {
 		priv->panel = panel;
-		priv->connector = drm_panel_bridge_connector(bridge);
+		priv->connector = panel->connector;
 	}
 
 	ret = pl111_display_init(dev);

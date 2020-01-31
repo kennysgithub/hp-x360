@@ -91,7 +91,7 @@ void amdgpu_driver_unload_kms(struct drm_device *dev)
 	if (amdgpu_sriov_vf(adev))
 		amdgpu_virt_request_full_gpu(adev, false);
 
-	if (adev->runpm) {
+	if (amdgpu_device_is_px(dev)) {
 		pm_runtime_get_sync(dev->dev);
 		pm_runtime_forbid(dev->dev);
 	}
@@ -150,7 +150,8 @@ int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags)
 	}
 	dev->dev_private = (void *)adev;
 
-	if (amdgpu_has_atpx() &&
+	if ((amdgpu_runtime_pm != 0) &&
+	    amdgpu_has_atpx() &&
 	    (amdgpu_is_atpx_hybrid() ||
 	     amdgpu_has_atpx_dgpu_power_cntl()) &&
 	    ((flags & AMD_IS_APU) == 0) &&
@@ -169,13 +170,6 @@ int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags)
 		goto out;
 	}
 
-	if (amdgpu_device_supports_boco(dev) &&
-	    (amdgpu_runtime_pm != 0)) /* enable runpm by default */
-		adev->runpm = true;
-	else if (amdgpu_device_supports_baco(dev) &&
-		 (amdgpu_runtime_pm > 0)) /* enable runpm if runpm=1 */
-		adev->runpm = true;
-
 	/* Call ACPI methods: require modeset init
 	 * but failure is not fatal
 	 */
@@ -186,7 +180,7 @@ int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags)
 				"Error during ACPI methods call\n");
 	}
 
-	if (adev->runpm) {
+	if (amdgpu_device_is_px(dev)) {
 		dev_pm_set_driver_flags(dev->dev, DPM_FLAG_NEVER_SKIP);
 		pm_runtime_use_autosuspend(dev->dev);
 		pm_runtime_set_autosuspend_delay(dev->dev, 5000);
@@ -199,7 +193,7 @@ int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags)
 out:
 	if (r) {
 		/* balance pm_runtime_get_sync in amdgpu_driver_unload_kms */
-		if (adev->rmmio && adev->runpm)
+		if (adev->rmmio && amdgpu_device_is_px(dev))
 			pm_runtime_put_noidle(dev->dev);
 		amdgpu_driver_unload_kms(dev);
 	}
@@ -297,10 +291,6 @@ static int amdgpu_firmware_info(struct drm_amdgpu_info_firmware *fw_info,
 		break;
 	case AMDGPU_INFO_FW_DMCU:
 		fw_info->ver = adev->dm.dmcu_fw_version;
-		fw_info->feature = 0;
-		break;
-	case AMDGPU_INFO_FW_DMCUB:
-		fw_info->ver = adev->dm.dmcub_fw_version;
 		fw_info->feature = 0;
 		break;
 	default:
@@ -406,14 +396,12 @@ static int amdgpu_hw_ip_info(struct amdgpu_device *adev,
 		ib_size_alignment = 1;
 		break;
 	case AMDGPU_HW_IP_VCN_JPEG:
-		type = (amdgpu_device_ip_get_ip_block(adev, AMD_IP_BLOCK_TYPE_JPEG)) ?
-			AMD_IP_BLOCK_TYPE_JPEG : AMD_IP_BLOCK_TYPE_VCN;
-
-		for (i = 0; i < adev->jpeg.num_jpeg_inst; i++) {
-			if (adev->jpeg.harvest_config & (1 << i))
+		type = AMD_IP_BLOCK_TYPE_VCN;
+		for (i = 0; i < adev->vcn.num_vcn_inst; i++) {
+			if (adev->uvd.harvest_config & (1 << i))
 				continue;
 
-			if (adev->jpeg.inst[i].ring_dec.sched.ready)
+			if (adev->vcn.inst[i].ring_jpeg.sched.ready)
 				++num_rings;
 		}
 		ib_start_alignment = 16;
@@ -529,11 +517,8 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 			break;
 		case AMDGPU_HW_IP_VCN_DEC:
 		case AMDGPU_HW_IP_VCN_ENC:
-			type = AMD_IP_BLOCK_TYPE_VCN;
-			break;
 		case AMDGPU_HW_IP_VCN_JPEG:
-			type = (amdgpu_device_ip_get_ip_block(adev, AMD_IP_BLOCK_TYPE_JPEG)) ?
-				AMD_IP_BLOCK_TYPE_JPEG : AMD_IP_BLOCK_TYPE_VCN;
+			type = AMD_IP_BLOCK_TYPE_VCN;
 			break;
 		default:
 			return -EINVAL;
@@ -703,6 +688,10 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 		if (adev->pm.dpm_enabled) {
 			dev_info.max_engine_clock = amdgpu_dpm_get_sclk(adev, false) * 10;
 			dev_info.max_memory_clock = amdgpu_dpm_get_mclk(adev, false) * 10;
+		} else if (amdgpu_sriov_vf(adev) && amdgim_is_hwperf(adev) &&
+			   adev->virt.ops->get_pp_clk) {
+			dev_info.max_engine_clock = amdgpu_virt_get_sclk(adev, false) * 10;
+			dev_info.max_memory_clock = amdgpu_virt_get_mclk(adev, false) * 10;
 		} else {
 			dev_info.max_engine_clock = adev->clock.default_sclk * 10;
 			dev_info.max_memory_clock = adev->clock.default_mclk * 10;
@@ -1403,14 +1392,6 @@ static int amdgpu_debugfs_firmware_info(struct seq_file *m, void *data)
 	if (ret)
 		return ret;
 	seq_printf(m, "DMCU feature version: %u, firmware version: 0x%08x\n",
-		   fw_info.feature, fw_info.ver);
-
-	/* DMCUB */
-	query_fw.fw_type = AMDGPU_INFO_FW_DMCUB;
-	ret = amdgpu_firmware_info(&fw_info, &query_fw, adev);
-	if (ret)
-		return ret;
-	seq_printf(m, "DMCUB feature version: %u, firmware version: 0x%08x\n",
 		   fw_info.feature, fw_info.ver);
 
 

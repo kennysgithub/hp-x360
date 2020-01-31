@@ -30,20 +30,6 @@
 #include "mod_freesync.h"
 #include "dc.h"
 
-enum vsc_packet_revision {
-	vsc_packet_undefined = 0,
-	//01h = VSC SDP supports only 3D stereo.
-	vsc_packet_rev1 = 1,
-	//02h = 3D stereo + PSR.
-	vsc_packet_rev2 = 2,
-	//03h = 3D stereo + PSR2.
-	vsc_packet_rev3 = 3,
-	//04h = 3D stereo + PSR/PSR2 + Y-coordinate.
-	vsc_packet_rev4 = 4,
-	//05h = 3D stereo + PSR/PSR2 + Y-coordinate + Pixel Encoding/Colorimetry Format
-	vsc_packet_rev5 = 5,
-};
-
 #define HDMI_INFOFRAME_TYPE_VENDOR 0x81
 #define HF_VSIF_VERSION 1
 
@@ -130,41 +116,35 @@ enum ColorimetryYCCDP {
 };
 
 void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
-		struct dc_info_packet *info_packet,
-		bool *use_vsc_sdp_for_colorimetry)
+		struct dc_info_packet *info_packet)
 {
-	unsigned int vsc_packet_revision = vsc_packet_undefined;
+	unsigned int vscPacketRevision = 0;
 	unsigned int i;
 	unsigned int pixelEncoding = 0;
 	unsigned int colorimetryFormat = 0;
 	bool stereo3dSupport = false;
 
-	/* Initialize first, later if infopacket is valid determine if VSC SDP
-	 * should be used to signal colorimetry format and pixel encoding.
-	 */
-	*use_vsc_sdp_for_colorimetry = false;
-
 	if (stream->timing.timing_3d_format != TIMING_3D_FORMAT_NONE && stream->view_format != VIEW_3D_FORMAT_NONE) {
-		vsc_packet_revision = vsc_packet_rev1;
+		vscPacketRevision = 1;
 		stereo3dSupport = true;
 	}
 
 	/*VSC packet set to 2 when DP revision >= 1.2*/
 	if (stream->psr_version != 0)
-		vsc_packet_revision = vsc_packet_rev2;
+		vscPacketRevision = 2;
 
 	/* Update to revision 5 for extended colorimetry support for DPCD 1.4+ */
 	if (stream->link->dpcd_caps.dpcd_rev.raw >= 0x14 &&
 			stream->link->dpcd_caps.dprx_feature.bits.VSC_SDP_COLORIMETRY_SUPPORTED)
-		vsc_packet_revision = vsc_packet_rev5;
+		vscPacketRevision = 5;
 
 	/* VSC packet not needed based on the features
 	 * supported by this DP display
 	 */
-	if (vsc_packet_revision == vsc_packet_undefined)
+	if (vscPacketRevision == 0)
 		return;
 
-	if (vsc_packet_revision == vsc_packet_rev2) {
+	if (vscPacketRevision == 0x2) {
 		/* Secondary-data Packet ID = 0*/
 		info_packet->hb0 = 0x00;
 		/* 07h - Packet Type Value indicating Video
@@ -186,7 +166,7 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
 		info_packet->valid = true;
 	}
 
-	if (vsc_packet_revision == vsc_packet_rev1) {
+	if (vscPacketRevision == 0x1) {
 
 		info_packet->hb0 = 0x00;	// Secondary-data Packet ID = 0
 		info_packet->hb1 = 0x07;	// 07h = Packet Type Value indicating Video Stream Configuration packet
@@ -257,7 +237,7 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
 	 *   the Pixel Encoding/Colorimetry Format and that a Sink device must ignore MISC1, bit 7, and
 	 *   MISC0, bits 7:1 (MISC1, bit 7. and MISC0, bits 7:1 become "don't care").)
 	 */
-	if (vsc_packet_revision == vsc_packet_rev5) {
+	if (vscPacketRevision == 0x5) {
 		/* Secondary-data Packet ID = 0 */
 		info_packet->hb0 = 0x00;
 		/* 07h - Packet Type Value indicating Video Stream Configuration packet */
@@ -268,13 +248,6 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
 		info_packet->hb3 = 0x13;
 
 		info_packet->valid = true;
-
-		/* If we are using VSC SDP revision 05h, use this to signal for
-		 * colorimetry format and pixel encoding. HW should later be
-		 * programmed to set MSA MISC1 bit 6 to indicate ignore
-		 * colorimetry format and pixel encoding in the MSA.
-		 */
-		*use_vsc_sdp_for_colorimetry = true;
 
 		/* Set VSC SDP fields for pixel encoding and colorimetry format from DP 1.3 specs
 		 * Data Bytes DB 18~16
@@ -420,6 +393,7 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
 		 */
 		info_packet->sb[18] = 0;
 	}
+
 }
 
 /**

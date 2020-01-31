@@ -244,7 +244,8 @@ unpin:
 
 static int do_relocs(struct host1x_job *job, struct host1x_job_gather *g)
 {
-	void *cmdbuf_addr = NULL;
+	u32 last_page = ~0;
+	void *cmdbuf_page_addr = NULL;
 	struct host1x_bo *cmdbuf = g->bo;
 	unsigned int i;
 
@@ -266,22 +267,28 @@ static int do_relocs(struct host1x_job *job, struct host1x_job_gather *g)
 			goto patch_reloc;
 		}
 
-		if (!cmdbuf_addr) {
-			cmdbuf_addr = host1x_bo_mmap(cmdbuf);
+		if (last_page != reloc->cmdbuf.offset >> PAGE_SHIFT) {
+			if (cmdbuf_page_addr)
+				host1x_bo_kunmap(cmdbuf, last_page,
+						 cmdbuf_page_addr);
 
-			if (unlikely(!cmdbuf_addr)) {
+			cmdbuf_page_addr = host1x_bo_kmap(cmdbuf,
+					reloc->cmdbuf.offset >> PAGE_SHIFT);
+			last_page = reloc->cmdbuf.offset >> PAGE_SHIFT;
+
+			if (unlikely(!cmdbuf_page_addr)) {
 				pr_err("Could not map cmdbuf for relocation\n");
 				return -ENOMEM;
 			}
 		}
 
-		target = cmdbuf_addr + reloc->cmdbuf.offset;
+		target = cmdbuf_page_addr + (reloc->cmdbuf.offset & ~PAGE_MASK);
 patch_reloc:
 		*target = reloc_addr;
 	}
 
-	if (cmdbuf_addr)
-		host1x_bo_munmap(cmdbuf, cmdbuf_addr);
+	if (cmdbuf_page_addr)
+		host1x_bo_kunmap(cmdbuf, last_page, cmdbuf_page_addr);
 
 	return 0;
 }

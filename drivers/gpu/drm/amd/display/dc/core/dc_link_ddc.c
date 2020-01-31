@@ -187,7 +187,7 @@ void dal_ddc_i2c_payloads_add(
 
 }
 
-static void ddc_service_construct(
+static void construct(
 	struct ddc_service *ddc_service,
 	struct ddc_service_init_data *init_data)
 {
@@ -206,10 +206,7 @@ static void ddc_service_construct(
 		ddc_service->ddc_pin = NULL;
 	} else {
 		hw_info.ddc_channel = i2c_info.i2c_line;
-		if (ddc_service->link != NULL)
-			hw_info.hw_supported = i2c_info.i2c_hw_assist;
-		else
-			hw_info.hw_supported = false;
+		hw_info.hw_supported = i2c_info.i2c_hw_assist;
 
 		ddc_service->ddc_pin = dal_gpio_create_ddc(
 			gpio_service,
@@ -239,11 +236,11 @@ struct ddc_service *dal_ddc_service_create(
 	if (!ddc_service)
 		return NULL;
 
-	ddc_service_construct(ddc_service, init_data);
+	construct(ddc_service, init_data);
 	return ddc_service;
 }
 
-static void ddc_service_destruct(struct ddc_service *ddc)
+static void destruct(struct ddc_service *ddc)
 {
 	if (ddc->ddc_pin)
 		dal_gpio_destroy_ddc(&ddc->ddc_pin);
@@ -255,7 +252,7 @@ void dal_ddc_service_destroy(struct ddc_service **ddc)
 		BREAK_TO_DEBUGGER();
 		return;
 	}
-	ddc_service_destruct(*ddc);
+	destruct(*ddc);
 	kfree(*ddc);
 	*ddc = NULL;
 }
@@ -590,7 +587,7 @@ bool dal_ddc_submit_aux_command(struct ddc_service *ddc,
 		struct aux_payload *payload)
 {
 	uint32_t retrieved = 0;
-	bool ret = false;
+	bool ret = 0;
 
 	if (!ddc)
 		return false;
@@ -650,16 +647,17 @@ bool dc_link_aux_transfer_with_retries(struct ddc_service *ddc,
 }
 
 
-uint32_t dc_link_aux_configure_timeout(struct ddc_service *ddc,
+enum dc_status dc_link_aux_configure_timeout(struct ddc_service *ddc,
 		uint32_t timeout)
 {
-	uint32_t prev_timeout = 0;
+	enum dc_status status = DC_OK;
 	struct ddc *ddc_pin = ddc->ddc_pin;
 
-	if (ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout)
-		prev_timeout =
-				ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout(ddc, timeout);
-	return prev_timeout;
+	if (ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout == NULL)
+		return DC_ERROR_UNEXPECTED;
+	if (!ddc->ctx->dc->res_pool->engines[ddc_pin->pin_data->en]->funcs->configure_timeout(ddc, timeout))
+		status = DC_ERROR_UNEXPECTED;
+	return status;
 }
 
 /*test only function*/

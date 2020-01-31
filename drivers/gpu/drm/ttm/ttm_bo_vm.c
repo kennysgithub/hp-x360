@@ -139,17 +139,19 @@ vm_fault_t ttm_bo_vm_reserve(struct ttm_buffer_object *bo,
 			if (!(vmf->flags & FAULT_FLAG_RETRY_NOWAIT)) {
 				ttm_bo_get(bo);
 				up_read(&vmf->vma->vm_mm->mmap_sem);
-				if (!dma_resv_lock_interruptible(bo->base.resv,
-								 NULL))
-					dma_resv_unlock(bo->base.resv);
+				(void) ttm_bo_wait_unreserved(bo);
 				ttm_bo_put(bo);
 			}
 
 			return VM_FAULT_RETRY;
 		}
 
-		if (dma_resv_lock_interruptible(bo->base.resv, NULL))
-			return VM_FAULT_NOPAGE;
+		/*
+		 * If we'd want to change locking order to
+		 * mmap_sem -> bo::reserve, we'd use a blocking reserve here
+		 * instead of retrying the fault...
+		 */
+		return VM_FAULT_NOPAGE;
 	}
 
 	return 0;
@@ -314,7 +316,7 @@ out_io_unlock:
 }
 EXPORT_SYMBOL(ttm_bo_vm_fault_reserved);
 
-vm_fault_t ttm_bo_vm_fault(struct vm_fault *vmf)
+static vm_fault_t ttm_bo_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	pgprot_t prot;
@@ -334,7 +336,6 @@ vm_fault_t ttm_bo_vm_fault(struct vm_fault *vmf)
 
 	return ret;
 }
-EXPORT_SYMBOL(ttm_bo_vm_fault);
 
 void ttm_bo_vm_open(struct vm_area_struct *vma)
 {
@@ -394,8 +395,8 @@ static int ttm_bo_vm_access_kmap(struct ttm_buffer_object *bo,
 	return len;
 }
 
-int ttm_bo_vm_access(struct vm_area_struct *vma, unsigned long addr,
-		     void *buf, int len, int write)
+static int ttm_bo_vm_access(struct vm_area_struct *vma, unsigned long addr,
+			    void *buf, int len, int write)
 {
 	unsigned long offset = (addr) - vma->vm_start;
 	struct ttm_buffer_object *bo = vma->vm_private_data;
@@ -431,7 +432,6 @@ int ttm_bo_vm_access(struct vm_area_struct *vma, unsigned long addr,
 
 	return ret;
 }
-EXPORT_SYMBOL(ttm_bo_vm_access);
 
 static const struct vm_operations_struct ttm_bo_vm_ops = {
 	.fault = ttm_bo_vm_fault,
@@ -520,6 +520,13 @@ EXPORT_SYMBOL(ttm_bo_mmap);
 int ttm_bo_mmap_obj(struct vm_area_struct *vma, struct ttm_buffer_object *bo)
 {
 	ttm_bo_get(bo);
+
+	/*
+	 * FIXME: &drm_gem_object_funcs.mmap is called with the fake offset
+	 * removed. Add it back here until the rest of TTM works without it.
+	 */
+	vma->vm_pgoff += drm_vma_node_start(&bo->base.vma_node);
+
 	ttm_bo_mmap_vma_setup(bo, vma);
 	return 0;
 }

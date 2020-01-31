@@ -95,17 +95,16 @@ static void __intel_wakeref_put_work(struct work_struct *wrk)
 void __intel_wakeref_init(struct intel_wakeref *wf,
 			  struct intel_runtime_pm *rpm,
 			  const struct intel_wakeref_ops *ops,
-			  struct intel_wakeref_lockclass *key)
+			  struct lock_class_key *key)
 {
 	wf->rpm = rpm;
 	wf->ops = ops;
 
-	__mutex_init(&wf->mutex, "wakeref.mutex", &key->mutex);
+	__mutex_init(&wf->mutex, "wakeref", key);
 	atomic_set(&wf->count, 0);
 	wf->wakeref = 0;
 
 	INIT_WORK(&wf->work, __intel_wakeref_put_work);
-	lockdep_init_map(&wf->work.lockdep_map, "wakeref.work", &key->work, 0);
 }
 
 int intel_wakeref_wait_for_idle(struct intel_wakeref *wf)

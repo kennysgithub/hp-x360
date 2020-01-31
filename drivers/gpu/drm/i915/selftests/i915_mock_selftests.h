@@ -1,11 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-
-#ifndef selftest
-#define selftest(x, y)
-#endif
-
-/*
- * List each unit test as selftest(name, function)
+/* List each unit test as selftest(name, function)
  *
  * The name is used as both an enum and expanded as subtest__name to create
  * a module parameter. It must be unique and legal for a C identifier.

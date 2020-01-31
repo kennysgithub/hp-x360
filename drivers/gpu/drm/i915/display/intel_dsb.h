@@ -22,7 +22,7 @@ enum dsb_id {
 };
 
 struct intel_dsb {
-	long refcount;
+	atomic_t refcount;
 	enum dsb_id id;
 	u32 *cmd_buf;
 	struct i915_vma *vma;

@@ -1346,7 +1346,7 @@ static int tc_connector_get_modes(struct drm_connector *connector)
 		return 0;
 	}
 
-	count = drm_panel_get_modes(tc->panel, connector);
+	count = drm_panel_get_modes(tc->panel);
 	if (count > 0)
 		return count;
 

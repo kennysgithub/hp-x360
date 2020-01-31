@@ -213,7 +213,7 @@ static void kick_submission(struct intel_engine_cs *engine,
 	 * If we are already the currently executing context, don't
 	 * bother evaluating if we should preempt ourselves.
 	 */
-	if (inflight->context == rq->context)
+	if (inflight->hw_context == rq->hw_context)
 		goto unlock;
 
 	engine->execlists.queue_priority_hint = prio;
@@ -387,19 +387,9 @@ void i915_sched_node_init(struct i915_sched_node *node)
 	INIT_LIST_HEAD(&node->signalers_list);
 	INIT_LIST_HEAD(&node->waiters_list);
 	INIT_LIST_HEAD(&node->link);
-
-	i915_sched_node_reinit(node);
-}
-
-void i915_sched_node_reinit(struct i915_sched_node *node)
-{
 	node->attr.priority = I915_PRIORITY_INVALID;
 	node->semaphores = 0;
 	node->flags = 0;
-
-	GEM_BUG_ON(!list_empty(&node->signalers_list));
-	GEM_BUG_ON(!list_empty(&node->waiters_list));
-	GEM_BUG_ON(!list_empty(&node->link));
 }
 
 static struct i915_dependency *
@@ -490,7 +480,6 @@ void i915_sched_node_fini(struct i915_sched_node *node)
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(dep);
 	}
-	INIT_LIST_HEAD(&node->signalers_list);
 
 	/* Remove ourselves from everyone who depends upon us */
 	list_for_each_entry_safe(dep, tmp, &node->waiters_list, wait_link) {
@@ -501,7 +490,6 @@ void i915_sched_node_fini(struct i915_sched_node *node)
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(dep);
 	}
-	INIT_LIST_HEAD(&node->waiters_list);
 
 	spin_unlock_irq(&schedule_lock);
 }
