@@ -212,6 +212,7 @@ enum {
 	Opt_errors,
 	Opt_discard,
 	Opt_time_offset,
+	Opt_namecase, /* FIXME: dummy for legacy ubuntu mount */
 };
 
 static const struct constant_table exfat_param_enums[] = {
@@ -232,6 +233,7 @@ static const struct fs_parameter_spec exfat_parameters[] = {
 	fsparam_enum("errors",			Opt_errors, exfat_param_enums),
 	fsparam_flag("discard",			Opt_discard),
 	fsparam_s32("time_offset",		Opt_time_offset),
+	fsparam_s32("namecase",			Opt_namecase),
 	{}
 };
 
@@ -277,6 +279,7 @@ static int exfat_parse_param(struct fs_context *fc, struct fs_parameter *param)
 		break;
 	case Opt_discard:
 		opts->discard = 1;
+	case Opt_namecase:	/* FIXME: ignore */
 		break;
 	case Opt_time_offset:
 		/*
