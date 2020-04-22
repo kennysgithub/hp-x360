@@ -85,7 +85,8 @@ i915_param_named_unsafe(enable_hangcheck, bool, 0600,
 
 i915_param_named_unsafe(enable_psr, int, 0600,
 	"Enable PSR "
-	"(0=disabled, 1=enabled) "
+	"(0=disabled, 1=enabled, "
+	"2=enable ALPM fault tolerance (may cause display corruption) "
 	"Default: -1 (use per-chip default)");
 
 i915_param_named_unsafe(force_probe, charp, 0400,
